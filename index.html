@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Lite - Fast LMS Client</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Lucide React icons as SVG components
+        const BookOpen = () => (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
+        );
+
+        const LogOut = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+        );
+
+        const ChevronRight = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+        );
+
+        const FileText = () => (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+        );
+
+        const Calendar = () => (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+        );
+
+        const Download = () => (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+        );
+
+        const CheckCircle = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+        );
+
+        const Circle = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+            </svg>
+        );
+
+        function CanvasLite() {
+            const [apiToken, setApiToken] = useState('');
+            const [apiUrl, setApiUrl] = useState('https://canvas.instructure.com');
+            const [isAuthenticated, setIsAuthenticated] = useState(false);
+            const [courses, setCourses] = useState([]);
+            const [selectedCourse, setSelectedCourse] = useState(null);
+            const [assignments, setAssignments] = useState([]);
+            const [announcements, setAnnouncements] = useState([]);
+            const [files, setFiles] = useState([]);
+            const [activeTab, setActiveTab] = useState('courses');
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+
+            useEffect(() => {
+                const saved = {
+                    token: sessionStorage.getItem('canvas_token'),
+                    url: sessionStorage.getItem('canvas_url')
+                };
+                if (saved.token && saved.url) {
+                    setApiToken(saved.token);
+                    setApiUrl(saved.url);
+                    setIsAuthenticated(true);
+                }
+            }, []);
+
+            useEffect(() => {
+                if (isAuthenticated) {
+                    fetchCourses();
+                }
+            }, [isAuthenticated]);
+
+            const fetchCourses = async () => {
+                setLoading(true);
+                setError('');
+                try {
+                    const proxyUrl = 'https://corsproxy.io/?';
+                    const res = await fetch(`${proxyUrl}${encodeURIComponent(apiUrl)}/api/v1/courses?enrollment_state=active&per_page=100`, {
+                        headers: { 'Authorization': `Bearer ${apiToken}` }
+                    });
+                    if (!res.ok) throw new Error('Failed to fetch courses - check your token and URL');
+                    const data = await res.json();
+                    setCourses(data);
+                } catch (e) {
+                    setError(e.message + ' (Note: This may not work in all environments due to CORS)');
+                }
+                setLoading(false);
+            };
+
+            const fetchCourseData = async (courseId) => {
+                setLoading(true);
+                setError('');
+                try {
+                    const proxyUrl = 'https://corsproxy.io/?';
+                    const [assignRes, announceRes, filesRes] = await Promise.all([
+                        fetch(`${proxyUrl}${encodeURIComponent(apiUrl)}/api/v1/courses/${courseId}/assignments?per_page=100`, {
+                            headers: { 'Authorization': `Bearer ${apiToken}` }
+                        }),
+                        fetch(`${proxyUrl}${encodeURIComponent(apiUrl)}/api/v1/courses/${courseId}/discussion_topics?only_announcements=true&per_page=20`, {
+                            headers: { 'Authorization': `Bearer ${apiToken}` }
+                        }),
+                        fetch(`${proxyUrl}${encodeURIComponent(apiUrl)}/api/v1/courses/${courseId}/files?per_page=50`, {
+                            headers: { 'Authorization': `Bearer ${apiToken}` }
+                        })
+                    ]);
+
+                    const [assignData, announceData, filesData] = await Promise.all([
+                        assignRes.json(),
+                        announceRes.json(),
+                        filesRes.json()
+                    ]);
+
+                    setAssignments(assignData);
+                    setAnnouncements(announceData);
+                    setFiles(filesData);
+                } catch (e) {
+                    setError(e.message);
+                }
+                setLoading(false);
+            };
+
+            const handleLogin = () => {
+                if (apiToken && apiUrl) {
+                    sessionStorage.setItem('canvas_token', apiToken);
+                    sessionStorage.setItem('canvas_url', apiUrl);
+                    setIsAuthenticated(true);
+                }
+            };
+
+            const handleLogout = () => {
+                sessionStorage.clear();
+                setIsAuthenticated(false);
+                setApiToken('');
+                setCourses([]);
+                setSelectedCourse(null);
+            };
+
+            const selectCourse = (course) => {
+                setSelectedCourse(course);
+                setActiveTab('assignments');
+                fetchCourseData(course.id);
+            };
+
+            if (!isAuthenticated) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+                            <div className="flex items-center justify-center mb-6">
+                                <div className="w-12 h-12 text-indigo-600">
+                                    <BookOpen />
+                                </div>
+                            </div>
+                            <h1 className="text-3xl font-bold text-center text-gray-800 mb-2">Canvas Lite</h1>
+                            <p className="text-center text-gray-600 mb-6">Fast, lightweight Canvas client</p>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Canvas URL</label>
+                                    <input
+                                        type="text"
+                                        value={apiUrl}
+                                        onChange={(e) => setApiUrl(e.target.value)}
+                                        placeholder="https://yourschool.instructure.com"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">API Token</label>
+                                    <input
+                                        type="password"
+                                        value={apiToken}
+                                        onChange={(e) => setApiToken(e.target.value)}
+                                        placeholder="Your Canvas API token"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Generate at: Account → Settings → New Access Token
+                                    </p>
+                                </div>
+
+                                <button
+                                    onClick={handleLogin}
+                                    className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 transition"
+                                >
+                                    Connect to Canvas
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    <header className="bg-white shadow-sm border-b">
+                        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 text-indigo-600">
+                                    <BookOpen />
+                                </div>
+                                <h1 className="text-xl font-bold text-gray-800">Canvas Lite</h1>
+                            </div>
+                            <button
+                                onClick={handleLogout}
+                                className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition"
+                            >
+                                <LogOut />
+                                <span className="text-sm">Logout</span>
+                            </button>
+                        </div>
+                    </header>
+
+                    <div className="max-w-7xl mx-auto p-4">
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+                                {error}
+                            </div>
+                        )}
+
+                        {!selectedCourse ? (
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-800 mb-4">My Courses</h2>
+                                {loading ? (
+                                    <div className="text-center py-12">
+                                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {courses.map(course => (
+                                            <button
+                                                key={course.id}
+                                                onClick={() => selectCourse(course)}
+                                                className="bg-white rounded-lg shadow hover:shadow-lg transition p-6 text-left group"
+                                            >
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <h3 className="font-semibold text-gray-800 group-hover:text-indigo-600 transition">
+                                                        {course.name}
+                                                    </h3>
+                                                    <ChevronRight />
+                                                </div>
+                                                <p className="text-sm text-gray-500">{course.course_code}</p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div>
+                                <button
+                                    onClick={() => setSelectedCourse(null)}
+                                    className="text-indigo-600 hover:text-indigo-700 mb-4 flex items-center gap-1"
+                                >
+                                    ← Back to Courses
+                                </button>
+
+                                <h2 className="text-2xl font-bold text-gray-800 mb-4">{selectedCourse.name}</h2>
+
+                                <div className="flex gap-2 mb-6 border-b">
+                                    <button
+                                        onClick={() => setActiveTab('assignments')}
+                                        className={`px-4 py-2 font-medium transition ${
+                                            activeTab === 'assignments'
+                                                ? 'text-indigo-600 border-b-2 border-indigo-600'
+                                                : 'text-gray-600 hover:text-gray-800'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <FileText />
+                                            Assignments
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('announcements')}
+                                        className={`px-4 py-2 font-medium transition ${
+                                            activeTab === 'announcements'
+                                                ? 'text-indigo-600 border-b-2 border-indigo-600'
+                                                : 'text-gray-600 hover:text-gray-800'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <Calendar />
+                                            Announcements
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('files')}
+                                        className={`px-4 py-2 font-medium transition ${
+                                            activeTab === 'files'
+                                                ? 'text-indigo-600 border-b-2 border-indigo-600'
+                                                : 'text-gray-600 hover:text-gray-800'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <Download />
+                                            Files
+                                        </div>
+                                    </button>
+                                </div>
+
+                                {loading ? (
+                                    <div className="text-center py-12">
+                                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        {activeTab === 'assignments' && (
+                                            <div className="space-y-3">
+                                                {assignments.length === 0 ? (
+                                                    <p className="text-gray-500 text-center py-8">No assignments found</p>
+                                                ) : (
+                                                    assignments.map(a => (
+                                                        <div key={a.id} className="bg-white rounded-lg shadow p-4">
+                                                            <div className="flex items-start gap-3">
+                                                                <div className="mt-1 flex-shrink-0">
+                                                                    {a.has_submitted_submissions ? (
+                                                                        <div className="text-green-500"><CheckCircle /></div>
+                                                                    ) : (
+                                                                        <div className="text-gray-400"><Circle /></div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <h3 className="font-medium text-gray-800">{a.name}</h3>
+                                                                    {a.due_at && (
+                                                                        <p className="text-sm text-gray-500 mt-1">
+                                                                            Due: {new Date(a.due_at).toLocaleDateString()}
+                                                                        </p>
+                                                                    )}
+                                                                    {a.points_possible && (
+                                                                        <p className="text-sm text-gray-600 mt-1">
+                                                                            Points: {a.points_possible}
+                                                                        </p>
+                                                                    )}
+                                                                    {a.html_url && (
+                                                                        <a
+                                                                            href={a.html_url}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="text-sm text-indigo-600 hover:text-indigo-700 mt-2 inline-block"
+                                                                        >
+                                                                            View in Canvas →
+                                                                        </a>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {activeTab === 'announcements' && (
+                                            <div className="space-y-3">
+                                                {announcements.length === 0 ? (
+                                                    <p className="text-gray-500 text-center py-8">No announcements found</p>
+                                                ) : (
+                                                    announcements.map(a => (
+                                                        <div key={a.id} className="bg-white rounded-lg shadow p-4">
+                                                            <h3 className="font-medium text-gray-800 mb-2">{a.title}</h3>
+                                                            <p className="text-sm text-gray-500 mb-3">
+                                                                {new Date(a.posted_at).toLocaleDateString()}
+                                                            </p>
+                                                            <div
+                                                                className="text-sm text-gray-700"
+                                                                dangerouslySetInnerHTML={{ __html: a.message }}
+                                                            />
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {activeTab === 'files' && (
+                                            <div className="space-y-2">
+                                                {files.length === 0 ? (
+                                                    <p className="text-gray-500 text-center py-8">No files found</p>
+                                                ) : (
+                                                    files.map(f => (
+                                                        <div key={f.id} className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+                                                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                                <div className="text-gray-400 flex-shrink-0">
+                                                                    <Download />
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <h3 className="font-medium text-gray-800 truncate">{f.display_name}</h3>
+                                                                    <p className="text-xs text-gray-500">
+                                                                        {(f.size / 1024).toFixed(1)} KB
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            {f.url && (
+                                                                <a
+                                                                    href={f.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-indigo-600 hover:text-indigo-700 text-sm font-medium ml-4 flex-shrink-0"
+                                                                >
+                                                                    Download
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CanvasLite />);
+    </script>
+</body>
+</html>
