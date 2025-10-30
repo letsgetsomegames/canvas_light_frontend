@@ -106,6 +106,12 @@
             </svg>
         );
 
+        const Folder = () => (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+        );
+
         const File = () => (
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
@@ -122,6 +128,7 @@
             const [assignments, setAssignments] = useState([]);
             const [announcements, setAnnouncements] = useState([]);
             const [files, setFiles] = useState([]);
+            const [modules, setModules] = useState([]);
             const [selectedAssignment, setSelectedAssignment] = useState(null);
             const [assignmentDetails, setAssignmentDetails] = useState(null);
             const [activeTab, setActiveTab] = useState('courses');
@@ -177,11 +184,14 @@
                     const proxyUrl = 'https://corsproxy.io/?';
                     
                     // Include full assignment details in the initial fetch
-                    const assignUrl = `${apiUrl}/api/v1/courses/${courseId}/assignments?include[]=submission&include[]=description&per_page=100`;
+                    const assignUrl = `${apiUrl}/api/v1/courses/${courseId}/assignments?per_page=100`;
                     const announceUrl = `${apiUrl}/api/v1/courses/${courseId}/discussion_topics?only_announcements=true&per_page=20`;
                     const filesUrl = `${apiUrl}/api/v1/courses/${courseId}/files?per_page=50`;
+                    const modulesUrl = `${apiUrl}/api/v1/courses/${courseId}/modules?include[]=items&per_page=100`;
                     
-                    const [assignRes, announceRes, filesRes] = await Promise.all([
+                    console.log('Fetching course data for course ID:', courseId);
+                    
+                    const [assignRes, announceRes, filesRes, modulesRes] = await Promise.all([
                         fetch(proxyUrl + encodeURIComponent(assignUrl), {
                             headers: { 'Authorization': `Bearer ${apiToken}` }
                         }),
@@ -190,30 +200,65 @@
                         }),
                         fetch(proxyUrl + encodeURIComponent(filesUrl), {
                             headers: { 'Authorization': `Bearer ${apiToken}` }
+                        }),
+                        fetch(proxyUrl + encodeURIComponent(modulesUrl), {
+                            headers: { 'Authorization': `Bearer ${apiToken}` }
                         })
                     ]);
 
                     console.log('Assignment response status:', assignRes.status);
                     console.log('Announcement response status:', announceRes.status);
                     console.log('Files response status:', filesRes.status);
+                    console.log('Modules response status:', modulesRes.status);
 
-                    const [assignData, announceData, filesData] = await Promise.all([
-                        assignRes.ok ? assignRes.json() : [],
-                        announceRes.ok ? announceRes.json() : [],
-                        filesRes.ok ? filesRes.json() : []
-                    ]);
+                    let assignData = [];
+                    let announceData = [];
+                    let filesData = [];
+                    let modulesData = [];
+
+                    if (assignRes.ok) {
+                        const text = await assignRes.text();
+                        console.log('Raw assignment response length:', text.length);
+                        try {
+                            assignData = JSON.parse(text);
+                            if (!Array.isArray(assignData)) {
+                                assignData = [];
+                            }
+                        } catch (e) {
+                            console.error('Failed to parse assignments JSON:', e);
+                        }
+                    }
+
+                    if (announceRes.ok) {
+                        announceData = await announceRes.json();
+                    }
+
+                    if (filesRes.ok) {
+                        filesData = await filesRes.json();
+                    }
+
+                    if (modulesRes.ok) {
+                        modulesData = await modulesRes.json();
+                        console.log('Modules loaded:', modulesData.length);
+                    }
 
                     setAssignments(Array.isArray(assignData) ? assignData : []);
                     setAnnouncements(Array.isArray(announceData) ? announceData : []);
                     setFiles(Array.isArray(filesData) ? filesData : []);
+                    setModules(Array.isArray(modulesData) ? modulesData : []);
                     
-                    console.log('Loaded:', assignData.length, 'assignments,', announceData.length, 'announcements,', filesData.length, 'files');
+                    console.log('Final counts - Assignments:', assignData.length, 'Announcements:', announceData.length, 'Files:', filesData.length, 'Modules:', modulesData.length);
+                    
+                    if (assignData.length === 0 && announceData.length === 0 && filesData.length === 0 && modulesData.length === 0) {
+                        setError('This course appears to be empty or you may not have access to its content.');
+                    }
                 } catch (e) {
                     console.error('Course data error:', e);
-                    setError(e.message);
+                    setError('Failed to load course data: ' + e.message);
                     setAssignments([]);
                     setAnnouncements([]);
                     setFiles([]);
+                    setModules([]);
                 }
                 setLoading(false);
             };
@@ -291,7 +336,7 @@
             const selectCourse = (course) => {
                 setSelectedCourse(course);
                 setSelectedAssignment(null);
-                setActiveTab('assignments');
+                setActiveTab('modules');
                 fetchCourseData(course.id);
             };
 
@@ -493,6 +538,14 @@
                                             </div>
                                         )}
 
+                                        {!assignmentDetails.description && (
+                                            <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                                <p className="text-sm text-yellow-800">
+                                                    This assignment doesn't have a description in Canvas. Click "Open in Canvas" below to see if there are additional details or to submit your work.
+                                                </p>
+                                            </div>
+                                        )}
+
                                         {(() => {
                                             const media = extractMediaFromHTML(assignmentDetails.description);
                                             if (media.length > 0) {
@@ -581,10 +634,23 @@
 
                                 <h2 className="text-2xl font-bold text-gray-800 mb-4">{selectedCourse.name}</h2>
 
-                                <div className="flex gap-2 mb-6 border-b">
+                                <div className="flex gap-2 mb-6 border-b overflow-x-auto">
+                                    <button
+                                        onClick={() => setActiveTab('modules')}
+                                        className={`px-4 py-2 font-medium transition whitespace-nowrap ${
+                                            activeTab === 'modules'
+                                                ? 'text-indigo-600 border-b-2 border-indigo-600'
+                                                : 'text-gray-600 hover:text-gray-800'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <Folder />
+                                            Modules
+                                        </div>
+                                    </button>
                                     <button
                                         onClick={() => setActiveTab('assignments')}
-                                        className={`px-4 py-2 font-medium transition ${
+                                        className={`px-4 py-2 font-medium transition whitespace-nowrap ${
                                             activeTab === 'assignments'
                                                 ? 'text-indigo-600 border-b-2 border-indigo-600'
                                                 : 'text-gray-600 hover:text-gray-800'
@@ -597,7 +663,7 @@
                                     </button>
                                     <button
                                         onClick={() => setActiveTab('announcements')}
-                                        className={`px-4 py-2 font-medium transition ${
+                                        className={`px-4 py-2 font-medium transition whitespace-nowrap ${
                                             activeTab === 'announcements'
                                                 ? 'text-indigo-600 border-b-2 border-indigo-600'
                                                 : 'text-gray-600 hover:text-gray-800'
@@ -610,7 +676,7 @@
                                     </button>
                                     <button
                                         onClick={() => setActiveTab('files')}
-                                        className={`px-4 py-2 font-medium transition ${
+                                        className={`px-4 py-2 font-medium transition whitespace-nowrap ${
                                             activeTab === 'files'
                                                 ? 'text-indigo-600 border-b-2 border-indigo-600'
                                                 : 'text-gray-600 hover:text-gray-800'
@@ -629,10 +695,83 @@
                                     </div>
                                 ) : (
                                     <div>
+                                        {activeTab === 'modules' && (
+                                            <div className="space-y-4">
+                                                {modules.length === 0 ? (
+                                                    <div className="text-center py-12">
+                                                        <p className="text-gray-500 mb-4">No modules found</p>
+                                                        <p className="text-sm text-gray-400">This course may not have any modules organized yet.</p>
+                                                    </div>
+                                                ) : (
+                                                    modules.map(module => (
+                                                        <div key={module.id} className="bg-white rounded-lg shadow overflow-hidden">
+                                                            <div className="bg-indigo-50 px-4 py-3 border-b border-indigo-100">
+                                                                <h3 className="font-semibold text-gray-800">{module.name}</h3>
+                                                                {module.items && (
+                                                                    <p className="text-sm text-gray-500 mt-1">
+                                                                        {module.items.length} item{module.items.length !== 1 ? 's' : ''}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                            {module.items && module.items.length > 0 && (
+                                                                <div className="divide-y">
+                                                                    {module.items.map(item => (
+                                                                        <div key={item.id} className="px-4 py-3 hover:bg-gray-50 transition">
+                                                                            <div className="flex items-center justify-between">
+                                                                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                                                    <div className="text-gray-400 flex-shrink-0">
+                                                                                        {item.type === 'Assignment' && <FileText />}
+                                                                                        {item.type === 'Page' && <File />}
+                                                                                        {item.type === 'Discussion' && <Calendar />}
+                                                                                        {item.type === 'File' && <Download />}
+                                                                                        {item.type === 'ExternalUrl' && <ExternalLink />}
+                                                                                        {!['Assignment', 'Page', 'Discussion', 'File', 'ExternalUrl'].includes(item.type) && <Circle />}
+                                                                                    </div>
+                                                                                    <div className="flex-1 min-w-0">
+                                                                                        <h4 className="font-medium text-gray-800 truncate">{item.title}</h4>
+                                                                                        <p className="text-xs text-gray-500">{item.type}</p>
+                                                                                    </div>
+                                                                                </div>
+                                                                                {item.html_url && (
+                                                                                    <a
+                                                                                        href={item.html_url}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        className="text-indigo-600 hover:text-indigo-700 text-sm font-medium ml-4 flex-shrink-0 flex items-center gap-1"
+                                                                                    >
+                                                                                        Open
+                                                                                        <ExternalLink />
+                                                                                    </a>
+                                                                                )}
+                                                                                {item.external_url && !item.html_url && (
+                                                                                    <a
+                                                                                        href={item.external_url}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        className="text-indigo-600 hover:text-indigo-700 text-sm font-medium ml-4 flex-shrink-0 flex items-center gap-1"
+                                                                                    >
+                                                                                        Open
+                                                                                        <ExternalLink />
+                                                                                    </a>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+
                                         {activeTab === 'assignments' && (
                                             <div className="space-y-3">
                                                 {assignments.length === 0 ? (
-                                                    <p className="text-gray-500 text-center py-8">No assignments found</p>
+                                                    <div className="text-center py-12">
+                                                        <p className="text-gray-500 mb-4">No assignments found</p>
+                                                        <p className="text-sm text-gray-400">This course may not have any assignments yet, or they may not be published.</p>
+                                                    </div>
                                                 ) : (
                                                     assignments.map(a => (
                                                         <button
@@ -658,6 +797,11 @@
                                                                     {a.points_possible && (
                                                                         <p className="text-sm text-gray-600 mt-1">
                                                                             Points: {a.points_possible}
+                                                                        </p>
+                                                                    )}
+                                                                    {a.description && (
+                                                                        <p className="text-xs text-green-600 mt-1">
+                                                                            ✓ Has description
                                                                         </p>
                                                                     )}
                                                                 </div>
