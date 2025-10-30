@@ -176,7 +176,8 @@
                 try {
                     const proxyUrl = 'https://corsproxy.io/?';
                     
-                    const assignUrl = `${apiUrl}/api/v1/courses/${courseId}/assignments?include[]=submission&per_page=100`;
+                    // Include full assignment details in the initial fetch
+                    const assignUrl = `${apiUrl}/api/v1/courses/${courseId}/assignments?include[]=submission&include[]=description&per_page=100`;
                     const announceUrl = `${apiUrl}/api/v1/courses/${courseId}/discussion_topics?only_announcements=true&per_page=20`;
                     const filesUrl = `${apiUrl}/api/v1/courses/${courseId}/files?per_page=50`;
                     
@@ -223,40 +224,48 @@
                 
                 // First, check if we already have the assignment data from the list
                 const existingAssignment = assignments.find(a => a.id === assignmentId);
-                if (existingAssignment && existingAssignment.description) {
+                
+                console.log('Looking for assignment:', assignmentId);
+                console.log('Found existing:', existingAssignment);
+                
+                // If we have the full description already, just use it
+                if (existingAssignment) {
                     setAssignmentDetails(existingAssignment);
                     setLoading(false);
+                    
+                    // Only show the warning if there's no description
+                    if (!existingAssignment.description) {
+                        setError('This assignment has no description. Click "Open in Canvas" to view it there.');
+                    }
                     return;
                 }
                 
+                // Otherwise try to fetch it (though this will likely fail due to CORS/proxy issues)
                 try {
                     const proxyUrl = 'https://corsproxy.io/?';
                     const targetUrl = `${apiUrl}/api/v1/courses/${courseId}/assignments/${assignmentId}`;
+                    console.log('Fetching from:', targetUrl);
+                    
                     const res = await fetch(proxyUrl + encodeURIComponent(targetUrl), {
                         headers: { 'Authorization': `Bearer ${apiToken}` }
                     });
                     
                     console.log('Assignment detail response status:', res.status);
                     
-                    if (!res.ok) {
-                        // If fetch fails, use the basic data we have
-                        if (existingAssignment) {
-                            setAssignmentDetails(existingAssignment);
-                            setError('Could not fetch full details. Showing basic info. Click "Open in Canvas" for complete assignment.');
-                        } else {
-                            throw new Error('Failed to fetch assignment details');
-                        }
-                    } else {
+                    if (res.ok) {
                         const data = await res.json();
                         setAssignmentDetails(data);
+                    } else {
+                        throw new Error('API returned status ' + res.status);
                     }
                 } catch (e) {
                     console.error('Assignment detail error:', e);
+                    // Use the data we already have
                     if (existingAssignment) {
                         setAssignmentDetails(existingAssignment);
-                        setError('Could not fetch full details. Showing basic info. Click "Open in Canvas" for complete assignment.');
+                        setError('Showing cached data. Click "Open in Canvas" for the most up-to-date version.');
                     } else {
-                        setError(e.message + ' - Try opening directly in Canvas');
+                        setError('Could not load assignment. Try opening directly in Canvas.');
                     }
                 }
                 setLoading(false);
