@@ -150,7 +150,7 @@
                 setLoading(true);
                 setError('');
                 try {
-                    const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                    const proxyUrl = 'https://corsproxy.io/?';
                     const res = await fetch(`${proxyUrl}${encodeURIComponent(apiUrl)}/api/v1/courses?enrollment_state=active&per_page=100`, {
                         headers: { 'Authorization': `Bearer ${apiToken}` }
                     });
