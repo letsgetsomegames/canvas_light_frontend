@@ -151,13 +151,20 @@
                 setError('');
                 try {
                     const proxyUrl = 'https://corsproxy.io/?';
-                    const res = await fetch(`${proxyUrl}${encodeURIComponent(apiUrl)}/api/v1/courses?enrollment_state=active&per_page=100`, {
+                    const targetUrl = `${apiUrl}/api/v1/courses?enrollment_state=active&per_page=100`;
+                    const res = await fetch(proxyUrl + encodeURIComponent(targetUrl), {
                         headers: { 'Authorization': `Bearer ${apiToken}` }
                     });
-                    if (!res.ok) throw new Error('Failed to fetch courses - check your token and URL');
+                    if (!res.ok) {
+                        const errorText = await res.text();
+                        console.error('Error response:', errorText);
+                        throw new Error('Failed to fetch courses - check your token and URL');
+                    }
                     const data = await res.json();
+                    console.log('Courses loaded:', data.length);
                     setCourses(data);
                 } catch (e) {
+                    console.error('Fetch error:', e);
                     setError(e.message);
                 }
                 setLoading(false);
@@ -168,29 +175,44 @@
                 setError('');
                 try {
                     const proxyUrl = 'https://corsproxy.io/?';
+                    
+                    const assignUrl = `${apiUrl}/api/v1/courses/${courseId}/assignments?include[]=submission&per_page=100`;
+                    const announceUrl = `${apiUrl}/api/v1/courses/${courseId}/discussion_topics?only_announcements=true&per_page=20`;
+                    const filesUrl = `${apiUrl}/api/v1/courses/${courseId}/files?per_page=50`;
+                    
                     const [assignRes, announceRes, filesRes] = await Promise.all([
-                        fetch(`${proxyUrl}${encodeURIComponent(apiUrl)}/api/v1/courses/${courseId}/assignments?include[]=submission&per_page=100`, {
+                        fetch(proxyUrl + encodeURIComponent(assignUrl), {
                             headers: { 'Authorization': `Bearer ${apiToken}` }
                         }),
-                        fetch(`${proxyUrl}${encodeURIComponent(apiUrl)}/api/v1/courses/${courseId}/discussion_topics?only_announcements=true&per_page=20`, {
+                        fetch(proxyUrl + encodeURIComponent(announceUrl), {
                             headers: { 'Authorization': `Bearer ${apiToken}` }
                         }),
-                        fetch(`${proxyUrl}${encodeURIComponent(apiUrl)}/api/v1/courses/${courseId}/files?per_page=50`, {
+                        fetch(proxyUrl + encodeURIComponent(filesUrl), {
                             headers: { 'Authorization': `Bearer ${apiToken}` }
                         })
                     ]);
 
+                    console.log('Assignment response status:', assignRes.status);
+                    console.log('Announcement response status:', announceRes.status);
+                    console.log('Files response status:', filesRes.status);
+
                     const [assignData, announceData, filesData] = await Promise.all([
-                        assignRes.json(),
-                        announceRes.json(),
-                        filesRes.json()
+                        assignRes.ok ? assignRes.json() : [],
+                        announceRes.ok ? announceRes.json() : [],
+                        filesRes.ok ? filesRes.json() : []
                     ]);
 
-                    setAssignments(assignData);
-                    setAnnouncements(announceData);
-                    setFiles(filesData);
+                    setAssignments(Array.isArray(assignData) ? assignData : []);
+                    setAnnouncements(Array.isArray(announceData) ? announceData : []);
+                    setFiles(Array.isArray(filesData) ? filesData : []);
+                    
+                    console.log('Loaded:', assignData.length, 'assignments,', announceData.length, 'announcements,', filesData.length, 'files');
                 } catch (e) {
+                    console.error('Course data error:', e);
                     setError(e.message);
+                    setAssignments([]);
+                    setAnnouncements([]);
+                    setFiles([]);
                 }
                 setLoading(false);
             };
@@ -209,9 +231,13 @@
                 
                 try {
                     const proxyUrl = 'https://corsproxy.io/?';
-                    const res = await fetch(`${proxyUrl}${encodeURIComponent(apiUrl)}/api/v1/courses/${courseId}/assignments/${assignmentId}`, {
+                    const targetUrl = `${apiUrl}/api/v1/courses/${courseId}/assignments/${assignmentId}`;
+                    const res = await fetch(proxyUrl + encodeURIComponent(targetUrl), {
                         headers: { 'Authorization': `Bearer ${apiToken}` }
                     });
+                    
+                    console.log('Assignment detail response status:', res.status);
+                    
                     if (!res.ok) {
                         // If fetch fails, use the basic data we have
                         if (existingAssignment) {
@@ -225,6 +251,7 @@
                         setAssignmentDetails(data);
                     }
                 } catch (e) {
+                    console.error('Assignment detail error:', e);
                     if (existingAssignment) {
                         setAssignmentDetails(existingAssignment);
                         setError('Could not fetch full details. Showing basic info. Click "Open in Canvas" for complete assignment.');
