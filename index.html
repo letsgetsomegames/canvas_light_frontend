@@ -250,7 +250,13 @@
                     console.log('Final counts - Assignments:', assignData.length, 'Announcements:', announceData.length, 'Files:', filesData.length, 'Modules:', modulesData.length);
                     
                     if (assignData.length === 0 && announceData.length === 0 && filesData.length === 0 && modulesData.length === 0) {
-                        setError('This course appears to be empty or you may not have access to its content.');
+                        if (assignRes.status === 403 || announceRes.status === 403 || filesRes.status === 403 || modulesRes.status === 403) {
+                            setError('Access denied (403 error). Your API token may not have permission to access this course content. This can happen with: unpublished courses, courses you\'re not enrolled in, or if your token permissions are limited. Try accessing the course directly in Canvas.');
+                        } else {
+                            setError('This course appears to be empty or you may not have access to its content.');
+                        }
+                    } else if (assignRes.status === 403 || announceRes.status === 403 || filesRes.status === 403 || modulesRes.status === 403) {
+                        setError('Some content could not be loaded due to permission restrictions (403 error). You can still view available content or open items directly in Canvas.');
                     }
                 } catch (e) {
                     console.error('Course data error:', e);
@@ -343,6 +349,30 @@
             const openAssignment = (assignment) => {
                 setSelectedAssignment(assignment);
                 fetchAssignmentDetails(selectedCourse.id, assignment.id);
+            };
+
+            const openModuleItem = (item) => {
+                if (item.type === 'Assignment' && item.content_id) {
+                    // Try to find the assignment in our loaded assignments
+                    const assignment = assignments.find(a => a.id === item.content_id);
+                    if (assignment) {
+                        openAssignment(assignment);
+                    } else {
+                        // Create a basic assignment object from the module item
+                        const basicAssignment = {
+                            id: item.content_id,
+                            name: item.title,
+                            html_url: item.html_url
+                        };
+                        setSelectedAssignment(basicAssignment);
+                        fetchAssignmentDetails(selectedCourse.id, item.content_id);
+                    }
+                } else if (item.html_url) {
+                    // For other types, open in new tab
+                    window.open(item.html_url, '_blank');
+                } else if (item.external_url) {
+                    window.open(item.external_url, '_blank');
+                }
             };
 
             const extractMediaFromHTML = (html) => {
